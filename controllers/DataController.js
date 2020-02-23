@@ -43,19 +43,38 @@ exports.getDataReport = async (req, res, next) => {
 
   const updateCases = async (data) => {
     const promises = data.map(async e => {
-      const query = {'Province/State': e[0], 'Country/Region': e[1]};
-      const newData = {'Last Update': e[2], 'Confirmed': e[3], 'Deaths': e[4], 'Recovered': e[5]};
+      const query = {'province': e[0], 'country': e[1]};
+      const newData = {'lastUpdate': e[2], 'confirmedCount': e[3], 'deathCount': e[4], 'recoveredCount': e[5]};
       const options = {new:true, upsert: true};
       try {
         let updated = await Case.findOneAndUpdate(query, newData, options).exec();
         return updated;
       } catch(err){
-        res.send(500, {error: err});
+        res.status(500).send({error: err});
       }
     });
-    await Promise.all(promises).then(res => console.log(res)).catch(err => res.send(500, {error: err}));
+    await Promise.all(promises).then(res => res).catch(err => res.send(500, {error: err}));
   }
 
-  updateCases(data);
-  return res.json(data);
+  try{
+    await updateCases(data);
+    const casesByCountry = await this.getDataReportByCountry().then(data => data).catch(err => console.log(err));
+    return res.status(200).json({data, casesByCountry});
+  } catch(err) {
+    return res.status(500).json({err: err})
+  }
+};
+
+exports.getDataReportByCountry = async (req, res, next) => {
+  const aggregatorOpts = [{
+    $group: {
+      _id: "$country",
+      confirmedCount: { $sum: "$confirmed" },
+      deathCount: { $sum: "$deaths" },
+      recoveredCount: { $sum: "$recovered" }
+    }
+  }]
+  
+  const groupedByCountry = Case.aggregate(aggregatorOpts).exec();
+  return groupedByCountry;
 };
