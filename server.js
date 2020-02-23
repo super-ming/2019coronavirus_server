@@ -16,7 +16,7 @@ const db = require('./db/config');
 const mainRoutes = require('./routes/main');
 
 // passport strategies
-const auth = require('./auth/auth');
+//const auth = require('./auth/auth');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,7 +44,7 @@ app.use(session({
 app.use(passport.initialize()); 
 app.use(passport.session()); 
 
-auth(passport);
+//auth(passport);
 
 // Setup parser
 app.use(express.urlencoded({extended: true}));
