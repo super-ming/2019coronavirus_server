@@ -59,7 +59,7 @@ exports.getDataReport = async (req, res, next) => {
   try{
     await updateCases(data);
     const casesByCountry = await this.getDataReportByCountry().then(data => data).catch(err => console.log(err));
-    return res.status(200).json({data, casesByCountry});
+    return res.status(200).json({cases: data, casesByCountry});
   } catch(err) {
     return res.status(500).json({err: err})
   }
@@ -72,8 +72,11 @@ exports.getDataReportByCountry = async (req, res, next) => {
       confirmedCount: { $sum: "$confirmed" },
       deathCount: { $sum: "$deaths" },
       recoveredCount: { $sum: "$recovered" }
+    }},
+    {
+      $sort: {"confirmedCount": -1}
     }
-  }]
+  ]
   
   const groupedByCountry = Case.aggregate(aggregatorOpts).exec();
   return groupedByCountry;
