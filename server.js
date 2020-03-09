@@ -1,6 +1,8 @@
-require('dotenv').config();
+'use-strict';
 
 const path = require('path');
+require('dotenv').config({path: path.join(__dirname, '.env')});
+
 const express = require('express');
 const session = require('express-session')
 const MongoStore = require('connect-mongo')(session);
@@ -25,7 +27,6 @@ const PORT = process.env.PORT || 5000;
 const errorHandler = (err, req, res, next) => {
   res.send({ error: err.message.split(',') })
 }
-
 // Setup session
 app.use(session({
   secret: process.env.SESSION_SECRET,

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const dataController = require('../controllers/DataController');
+const caseController = require('../controllers/CaseController');
 
-router.get('/api/data', dataController.getDataReport);
+router.get('/api/cases', caseController.getDataReport);
 module.exports = router;
