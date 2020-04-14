@@ -1,11 +1,13 @@
 const axios = require('axios');
 const Case = require('../models/Case');
 
+const baseURL = 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data'
+
 exports.getDataTimeSeries = async (req, res, next) => {
   const dataTypes = ['Confirmed', 'Deaths', 'Recovered'];
   const getData = async (type) => {
     try {
-      const result = await axios.get(`https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-${type}.csv`);
+      const result = await axios.get(`${baseURL}/csse_covid_19_time_series/time_series_19-covid-${type}.csv`);
       const arr = result.data.split('\n').map(e => e.trim()).map(e => e.split(',').map(e => e.trim()))
       return arr
     } catch(err){
@@ -24,17 +26,10 @@ exports.getDataTimeSeries = async (req, res, next) => {
 };
 
 exports.getDataReport = async (req, res, next) => {
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  
-  let todayMonth = today.getMonth()+1 < 10 ? `0${today.getMonth()+1}` : today.getMonth()+1, todayDay = today.getDate(), todayYear = today.getFullYear();
-  let yesterdayMonth = yesterday.getMonth()+1 < 10 ? `0${yesterday.getMonth()+1}` : yesterday.getMonth()+1, yesterdayDay = yesterday.getDate(), yesterdayYear = yesterday.getFullYear();
-  
   const updateCases = async (data) => {
     const promises = data.map(async e => {
-      const query = {'province': e[0], 'country': e[1]};
-      const newData = {'lastUpdate': e[2], 'confirmedCount': e[3], 'deathCount': e[4], 'recoveredCount': e[5], 'lat': e[6], 'lng': e[7]};
+      const query = {'city': e[1], 'province': e[2], 'country': e[3]};
+      const newData = {'lastUpdate': e[4], 'lat': e[5], 'lng': e[6], 'confirmedCount': e[7], 'deathCount': e[8], 'recoveredCount': e[9], 'activeCount': e[10], 'key': e[11] };
       const options = {new:true, upsert: true};
       try {
         let updated = await Case.findOneAndUpdate(query, newData, options).exec();
@@ -51,27 +46,48 @@ exports.getDataReport = async (req, res, next) => {
   }
   
   try {
-    const result = await axios.get(`https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/03-06-${todayYear}.csv`);
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    const mm = date.getMonth() + 1 < 10 ? `0${date.getMonth() + 1}` : date.getMonth() + 1;
+    const dd = date.getDate(); 
+    const yyyy = date.getFullYear();
+    const dateString = `${mm}-${dd}-${yyyy}`;
+    const result = await axios.get(`${baseURL}/csse_covid_19_daily_reports/${dateString}.csv`);
     //split string to lines, then split each line into array
     let updatedData, casesByCountry, minMaxLatLng;
     const arr = result.data.split('\n').map(e => e.trim()).map(e => e.split(',').map(e => e.trim()))
-    if(arr[0][0] === 'Province/State') arr.splice(0,1);
-    //remove any extra columns
+    if(arr[0][0] === 'FIPS') arr.splice(0,1);
+
     arr.forEach(e => {
-      if(e.length > 8){
-        e[0] = e.slice(0,2).join();
-        e.splice(1, 1);
+      if(e.length > 14){
+        e[2] = e.slice(2,4).join();
+        e.splice(3,1);
       }
-      e[0] ? e[0] = e[0].replace(/"/g, "") : e[0];
+     
+      e[1] ? e[1] = e[1].replace(/"/g, "") : e[1];
+      e[2] ? e[2] = e[2].replace(/"/g, "") : e[2];
+      e[3] ? e[3] = e[3].replace(/"/g, "") : e[3];
+      e[4] ? e[4] = e[4].replace(/"/g, "") : e[4];
+      e[9] ? e[9] = e[9].replace(/"/g, "") : e[9];
+    
+      if(e[3] === 'Korea') {
+        e[3] = e.slice(3,5).join();
+        e.splice(4,1);
+      }
+
+      e[11] = e.slice(11,13).join();
+      e.splice(12,2);
+      e[11] ? e[11] = e[11].replace(/"/g, "") : e[11];
+
     });
     //remove empty rows
-    let data = arr.filter(e => e[1]);
-    
+    let data = arr.filter(e => e[3] && e[1] !== 'unassigned');
     updatedData = await updateCases(data);
     casesByCountry = await this.getDataReportByCountry();
     minMaxLatLng = await this.getMinMaxLatLng(casesByCountry);
     return res.status(200).json({cases: updatedData, casesByCountry, minMaxLatLng});
   } catch(err){
+    console.log(err)
     if(err.response.status === 404){
       const cache = await this.getCachedData();
       if(!cache.err){
@@ -90,6 +106,7 @@ exports.getDataReportByCountry = async () => {
       confirmedCount: { $sum: "$confirmedCount" },
       deathCount: { $sum: "$deathCount" },
       recoveredCount: { $sum: "$recoveredCount" },
+      activeCount: { $sum: "$activeCount" },
       lat: { $first: "$lat"},
       lng: { $first: "$lng"}
     }},
@@ -134,14 +151,14 @@ exports.getGeoLocation = async (loc) => {
 exports.getMinMaxLatLng = async (data) => {
   try {
     let minLat = 34.554091, minLng = 103.502982, maxLat = 34.554091, maxLng = 103.502982;
-    for(let i = 1; i < data.length; i++){
-      if(data[i].lat || data[i].lng){
-        minLat = (data[i].lat < minLat) ? data[i].lat : minLat;
-        minLng = (data[i].lng < minLng) ? data[i].lng : minLng;
-        maxLat = (data[i].lat > maxLat) ? data[i].lat : maxLat;
-        maxLng = (data[i].lng > maxLng) ? data[i].lng : maxLng;
-      }
-    }
+
+    minLat = data.reduce((min, c) => {
+      c.lat < min ? minLat = c.lat : minLat;
+    });
+
+    minLng = data.reduce((min, c) => c.lng < min ? minLng = c.lng : minLng);
+    maxLat = data.reduce((max, c) => c.lat < max ? maxLat = c.lat : maxLat);
+    maxLng = data.reduce((max, c) => c.lng < max ? maxLng = c.lng : maxLng);
     return {minLat, minLng, maxLat, maxLng}
   } catch(err){
     return err;
